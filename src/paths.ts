@@ -4,14 +4,30 @@
  * Long session names get hashed to keep the on-disk filename under
  * AF_UNIX's 104-byte path limit; we replicate that hashing so the SDK
  * can address sessions the daemon created.
+ *
+ * Namespace isolation: every path helper accepts an optional `dataDir`
+ * so apps embedding the SDK (agentara, third-party TUIs) can keep
+ * their sessions out of the default `/tmp/remote-claude/` directory
+ * that agent-remote's own Feishu bridge scans.
+ *
+ * Resolution order matches the daemon CLI:
+ *   explicit dataDir arg  >  AGENT_REMOTE_CORE_DATA_DIR env  >  default
  */
 
 import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-/** Where the daemon places per-session socket / pid / mq files. */
-export const SOCKET_DIR = "/tmp/remote-claude";
+const DEFAULT_SOCKET_DIR = "/tmp/remote-claude";
+
+/** Resolve the runtime directory the daemon writes to. */
+export function resolveDataDir(dataDir?: string): string {
+  if (dataDir) return dataDir;
+  return process.env.AGENT_REMOTE_CORE_DATA_DIR ?? DEFAULT_SOCKET_DIR;
+}
+
+/** Where the daemon places per-session socket / pid / mq files (default). */
+export const SOCKET_DIR = DEFAULT_SOCKET_DIR;
 
 /** User data dir (logs, bindings). Matches Python USER_DATA_DIR. */
 export function userDataDir(): string {
@@ -29,18 +45,18 @@ export function safeFilename(name: string): string {
   return createHash("md5").update(name, "utf-8").digest("hex");
 }
 
-export function socketPath(name: string): string {
-  return join(SOCKET_DIR, `${safeFilename(name)}.sock`);
+export function socketPath(name: string, dataDir?: string): string {
+  return join(resolveDataDir(dataDir), `${safeFilename(name)}.sock`);
 }
 
-export function mqPath(name: string): string {
-  return join(SOCKET_DIR, `${safeFilename(name)}.mq`);
+export function mqPath(name: string, dataDir?: string): string {
+  return join(resolveDataDir(dataDir), `${safeFilename(name)}.mq`);
 }
 
-export function pidPath(name: string): string {
-  return join(SOCKET_DIR, `${safeFilename(name)}.pid`);
+export function pidPath(name: string, dataDir?: string): string {
+  return join(resolveDataDir(dataDir), `${safeFilename(name)}.pid`);
 }
 
-export function nameFilePath(name: string): string {
-  return join(SOCKET_DIR, `${safeFilename(name)}.name`);
+export function nameFilePath(name: string, dataDir?: string): string {
+  return join(resolveDataDir(dataDir), `${safeFilename(name)}.name`);
 }

@@ -47,14 +47,16 @@ export interface SessionInfo {
 
 export class SessionManager {
   private readonly daemonBin: string;
+  private readonly dataDir?: string;
 
-  constructor(opts?: { daemonBin?: string }) {
+  constructor(opts?: { daemonBin?: string; dataDir?: string }) {
     this.daemonBin = opts?.daemonBin ?? "agent-remote-core";
+    this.dataDir = opts?.dataDir;
   }
 
   /** Start a fresh PTY-backed session. Returns once the socket exists. */
   async start(name: string, opts: StartOptions = {}): Promise<void> {
-    const args = ["start", name, "--cli-type", opts.cliType ?? "claude"];
+    const args = [...this._globalArgs(), "start", name, "--cli-type", opts.cliType ?? "claude"];
     if (opts.cliArgs?.length) args.push("--", ...opts.cliArgs);
     await this._spawnDetached(args, opts);
     await this._waitForSocket(name);
@@ -62,7 +64,7 @@ export class SessionManager {
 
   /** Mirror an existing tmux session. */
   async mirror(tmuxTarget: string, opts: MirrorOptions = {}): Promise<string> {
-    const args = ["mirror", tmuxTarget, "--cli-type", opts.cliType ?? "claude"];
+    const args = [...this._globalArgs(), "mirror", tmuxTarget, "--cli-type", opts.cliType ?? "claude"];
     if (opts.name) args.push("--name", opts.name);
     const sessionName = opts.name ?? tmuxTarget;
     await this._spawnDetached(args, opts);
@@ -72,27 +74,31 @@ export class SessionManager {
 
   /** Check if a session's socket is alive. */
   exists(name: string): boolean {
-    return existsSync(socketPath(name));
+    return existsSync(socketPath(name, this.dataDir));
   }
 
   /** List active sessions (parses `daemon list --json`). */
   async list(): Promise<SessionInfo[]> {
     try {
-      const { stdout } = await execFileP(this.daemonBin, ["list", "--json"]);
+      const { stdout } = await execFileP(this.daemonBin, [...this._globalArgs(), "list", "--json"]);
       return JSON.parse(stdout.trim()) as SessionInfo[];
     } catch {
       return [];
     }
   }
 
+  private _globalArgs(): string[] {
+    return this.dataDir ? ["--data-dir", this.dataDir] : [];
+  }
+
   /** Stop a session. */
   async kill(name: string): Promise<void> {
-    await execFileP(this.daemonBin, ["kill", name]).catch(() => undefined);
+    await execFileP(this.daemonBin, [...this._globalArgs(), "kill", name]).catch(() => undefined);
   }
 
   /** Get socket / mq paths for a session. */
   async paths(name: string): Promise<{ socket: string; mq: string; pid_file: string; active: boolean }> {
-    const { stdout } = await execFileP(this.daemonBin, ["paths", name]);
+    const { stdout } = await execFileP(this.daemonBin, [...this._globalArgs(), "paths", name]);
     return JSON.parse(stdout.trim());
   }
 
@@ -111,10 +117,11 @@ export class SessionManager {
 
   private async _waitForSocket(name: string, timeoutMs = 5000): Promise<void> {
     const start = Date.now();
+    const target = socketPath(name, this.dataDir);
     while (Date.now() - start < timeoutMs) {
-      if (existsSync(socketPath(name))) return;
+      if (existsSync(target)) return;
       await new Promise((r) => setTimeout(r, 100));
     }
-    throw new Error(`Timed out waiting for daemon socket: ${socketPath(name)}`);
+    throw new Error(`Timed out waiting for daemon socket: ${target}`);
   }
 }

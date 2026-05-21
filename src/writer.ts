@@ -34,11 +34,13 @@ export class SessionWriter {
   private _socket?: Socket;
   private _connectPromise?: Promise<void>;
   private _reader?: SessionReader;
+  private _dataDir?: string;
 
-  constructor(sessionName: string, opts?: { clientId?: string }) {
+  constructor(sessionName: string, opts?: { clientId?: string; dataDir?: string }) {
     this.sessionName = sessionName;
-    this.path = socketPath(sessionName);
+    this.path = socketPath(sessionName, opts?.dataDir);
     this.clientId = opts?.clientId ?? newClientId();
+    this._dataDir = opts?.dataDir;
   }
 
   /** Send raw bytes to the daemon's PTY (or tmux send-keys in mirror mode). */
@@ -159,7 +161,7 @@ export class SessionWriter {
   }
 
   private _getReader(): SessionReader {
-    if (!this._reader) this._reader = new SessionReader(this.sessionName);
+    if (!this._reader) this._reader = new SessionReader(this.sessionName, { dataDir: this._dataDir });
     return this._reader;
   }
 

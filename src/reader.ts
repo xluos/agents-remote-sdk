@@ -36,9 +36,9 @@ export class SessionReader {
   readonly path: string;
   private _lastSequence = -1;
 
-  constructor(sessionName: string) {
+  constructor(sessionName: string, opts?: { dataDir?: string }) {
     this.sessionName = sessionName;
-    this.path = mqPath(sessionName);
+    this.path = mqPath(sessionName, opts?.dataDir);
   }
 
   /** One-shot read of the current snapshot. Returns EMPTY_SNAPSHOT on failure. */
